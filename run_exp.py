@@ -204,7 +204,9 @@ for information in function_information:
                 
                 train_Y = (Y_BO - Y_BO.mean()) / Y_BO.std()
                 train_X = normalize(X_BO, bounds)
-                fstar_standard = (fstar - Y_BO.mean()) / Y_BO.std()
+                
+                fstar_temp = 0
+                fstar_standard = (fstar_temp - Y_BO.mean()) / Y_BO.std()
                 fstar_standard = fstar_standard.item()
                 
                 train_Y = train_Y.numpy()

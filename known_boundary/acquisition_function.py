@@ -249,6 +249,61 @@ def Warped_EI_acquisition_opt(model,bounds,f_best,c,f_mean): #bound should an ar
   return X_next
 
 
+def Warped_TEI1(X,dim,f_best,c,f_mean,fstar,model): 
+  
+  X = X.reshape(-1,dim)
+
+  mean,var = model.predict(X,include_likelihood=False)  
+  var[var<10**(-12)]=10**(-12)
+  sigma = np.sqrt(var)
+  mu = mean+f_mean
+  
+  C = c+f_best
+  part1 = C*norm.cdf((np.log(C)-mu)/sigma)-np.exp(mu+sigma**2/2)*norm.cdf((np.log(C)-mu-sigma**2)/sigma)
+  
+  C = c+fstar
+  part2 = C*norm.cdf((np.log(C)-mu)/sigma)-np.exp(mu+sigma**2/2)*norm.cdf((np.log(C)-mu-sigma**2)/sigma)
+  
+  
+  # part1 = Warped_EI(X,dim,f_best,c,f_mean,model)
+  # part2 = Warped_EI(X,dim,fstar,c,f_mean,model)
+  
+  part3 = (f_best-fstar)*norm.cdf(  (np.log(fstar+c)-mu) /sigma ) 
+  
+  out = part1-part2+part3
+  
+  return out.ravel()  #make the shape to be 1 dimensional
+
+
+def Warped_TEI1_acquisition_opt(model,bounds,f_best,c,f_mean,fstar): #bound should an array of size dim*2
+  dim = bounds.shape[0]
+  opts ={'maxiter':50*dim,'maxfun':50*dim,'disp': False}
+
+  restart_num = 3*dim
+  X_candidate = []
+  AF_candidate = []
+
+  for i in range(restart_num):
+    init_X = np.random.uniform(bounds[:, 0], bounds[:, 1],size=(30*dim, dim))
+    value_holder =  Warped_TEI1(init_X,dim,f_best,c,f_mean,fstar,model)
+      
+    x0=init_X[np.argmax(value_holder)]
+
+    res = minimize(lambda x: -Warped_TEI1(X=x,dim=dim,f_best=f_best,c=c,f_mean=f_mean,fstar=fstar,model=model),x0,
+                                  bounds=bounds,method="L-BFGS-B",options=opts) 
+
+    X_temp =   res.x  
+    AF_temp = Warped_TEI1(X=np.array(X_temp).reshape(-1,1),dim=dim,f_best=f_best,c=c,f_mean=f_mean,fstar=fstar,model=model)
+    
+    X_candidate.append(X_temp)
+    AF_candidate.append(AF_temp)
+
+  X_next = X_candidate[np.argmax(AF_candidate)]
+
+  return X_next
+
+
+
 
 def Warped_TEI2(X,dim,f_best,c,f_mean,model): # X is a 2-dimensional array because we will use it in scipy.minimize
 
@@ -269,7 +324,7 @@ def Warped_TEI2(X,dim,f_best,c,f_mean,model): # X is a 2-dimensional array becau
   
   out_temp = part1-part2
   
-  part3 = f_best*norm.cdf(  (np.log(c)-mu) /sigma ) 
+  part3 = (f_best-0)*norm.cdf(  (np.log(c)-mu) /sigma ) 
   
   out = out_temp+part3
   

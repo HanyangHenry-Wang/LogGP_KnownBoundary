@@ -120,12 +120,12 @@ def log_llk_warp(X,y,parameters):
     if np.isnan(KK_x_x).any(): #NaN
         print("nan in KK_x_x !")   
 
-    try: #check whether it is singular
-        L=scipy.linalg.cholesky(KK_x_x,lower=True)
-        alpha=np.linalg.solve(KK_x_x,y_warp)
+    # try: #check whether it is singular
+    #     L=scipy.linalg.cholesky(KK_x_x,lower=True)
+    #     alpha=np.linalg.solve(KK_x_x,y_warp)
 
-    except: # singular
-        return -np.inf
+    # except: # singular
+    #     return -np.inf
     
     try:
         first_term = -0.5*np.log(np.linalg.det(KK_x_x))
@@ -145,11 +145,11 @@ def log_llk_warp(X,y,parameters):
     return logmarginal.item()
 
 
-def optimise_warp(X, y):
+def optimise_warp(X, y,variance_lb = 0.01):
 
     opts ={'maxiter':1000,'maxfun':200,'disp': False}
     
-    bounds = np.array([[0.015**2,0.6**2],[0.01,10.],[10**(-5),0.3]]) 
+    bounds = np.array([[0.015**2,0.6**2],[variance_lb,10.],[10**(-5),0.3]]) 
     hyper_num = 3
     restart_num = 9*hyper_num 
     
@@ -180,13 +180,27 @@ def optimise_warp(X, y):
 
 
 
-def optimise_warp_no_boundary(X, y,upper=1):
+def optimise_warp_no_boundary(X, y,upper=1,lower=0):
 
     opts ={'maxiter':1000,'maxfun':200,'disp': False}
     
     ymin = np.min(y)
     
-    bounds = np.array([[0.015**2,0.6**2],[0.01,10.],[-ymin+10**(-5),-ymin+upper]])  
+    if lower == 0:
+    
+        if upper>-ymin+10**(-6):
+        
+            bounds = np.array([[0.015**2,0.6**2],[0.01,10.],[-ymin+10**(-6),upper]])  
+        
+        else:
+            
+            bounds = np.array([[0.015**2,0.6**2],[0.01,10.],[-ymin+10**(-10),upper]])  
+            
+    else:
+        if lower > -ymin+10**(-6):
+             bounds = np.array([[0.015**2,0.6**2],[0.01,10.],[lower,upper]])  
+        else:
+            bounds = np.array([[0.015**2,0.6**2],[0.01,10.],[-ymin+10**(-6),upper]])  
     
     hyper_num = 3
     restart_num = 9*hyper_num 

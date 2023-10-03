@@ -1,6 +1,6 @@
-from known_boundary.GP import optimise,optimise_warp
+from known_boundary.GP import optimise,optimise_warp,optimise_warp_no_boundary
 from known_boundary.utlis import Trans_function, get_initial_points,transform
-from known_boundary.acquisition_function import EI_acquisition_opt,MES_acquisition_opt,Warped_TEI2_acquisition_opt,LCB_acquisition_opt,ERM_acquisition_opt
+from known_boundary.acquisition_function import EI_acquisition_opt,MES_acquisition_opt,Warped_TEI2_acquisition_opt,LCB_acquisition_opt,ERM_acquisition_opt,Warped_EI_acquisition_opt,Warped_TEI1_acquisition_opt
 from obj_functions.obj_function import XGBoost
 import numpy as np
 import matplotlib.pyplot as plt
@@ -303,7 +303,87 @@ for exp in range(N):
 np.savetxt('exp_res/Breast_logGP+logTEI', Warped_BO_TEI2, delimiter=',')
 
 
+Warped_BO_TEI = []
 
+for exp in range(N):
+
+    seed = exp
+    
+    print(exp)
+    
+    fun = XGBoost('breast',seed=exp)
+    dim = fun.dim
+    bounds = fun.bounds
+    
+    fstar = 100
+    fun = Trans_function(fun,fstar,min=False)
+    
+
+    X_BO = get_initial_points(bounds, n_init,device,dtype,seed=seed)
+    Y_BO = torch.tensor(
+        [fun(x) for x in X_BO], dtype=dtype, device=device
+    ).reshape(-1,1)
+
+
+
+    best_record = [Y_BO.min().item()]
+    
+    np.random.seed(1234)
+    
+    fstar_standard = 0.
+    fstar_temp = 0.
+    for i in range(iter_num):
+        
+            train_Y = Y_BO.numpy()
+            train_X = normalize(X_BO, bounds)
+            train_X = train_X.numpy()
+            
+            standard_best_record = [np.min(train_Y)]
+            # train the GP
+            delta2 = 0.3
+            delta2_standard =  delta2  #delta2/ Y_BO.std()
+            
+            res = optimise_warp_no_boundary(train_X, train_Y,-fstar_standard+delta2_standard)
+
+            #res = optimise_warp(train_X, train_Y)
+            lengthscale = np.sqrt(res[0])
+            variance = res[1]
+            c = res[2]
+            
+            
+            warp_Y = np.log(train_Y+c)
+            mean_warp_Y = np.mean(warp_Y) # use to predict mean
+            warp_Y_standard = warp_Y-mean_warp_Y
+            
+            
+            kernel = GPy.kern.RBF(input_dim=dim,lengthscale= lengthscale,variance=variance)  
+            m = GPy.models.GPRegression(train_X, warp_Y_standard,kernel)
+            m.Gaussian_noise.variance.fix(10**(-5))
+            
+            c_unstandard = -c # -c*Y_BO.std()+Y_BO.mean()
+            print('C is: ',c_unstandard)
+            if c_unstandard>=fstar_temp:
+                #print('logEI')
+                standard_next_X = Warped_EI_acquisition_opt(model=m,bounds=standard_bounds,f_best=standard_best_record[-1],c=c,f_mean=mean_warp_Y)
+            else:
+                #print('logTEI')
+                standard_next_X = Warped_TEI1_acquisition_opt(model=m,bounds=standard_bounds,f_best=standard_best_record[-1],c=c,f_mean=mean_warp_Y,fstar=fstar_standard)
+            
+            standard_next_X = Warped_TEI2_acquisition_opt(model=m,bounds=standard_bounds,f_best=best_record[-1],c=c,f_mean=mean_warp_Y)
+            X_next = unnormalize(torch.tensor(standard_next_X), bounds).reshape(-1,dim)            
+            Y_next = fun(X_next).reshape(-1,1)
+
+            # Append data
+            X_BO = torch.cat((X_BO, X_next), dim=0)
+            Y_BO = torch.cat((Y_BO, Y_next), dim=0)
+            
+            best_record.append(Y_BO.min().item())
+            #print(best_record[-1])
+            
+    best_record = fstar-(np.array(best_record))     
+    Warped_BO_TEI2.append(best_record)
+    
+np.savetxt('exp_res/Breast_logGP+logTEI(general bounday)', Warped_BO_TEI, delimiter=',')
 
 print('GP-TEI')
 BO_TEI = []
